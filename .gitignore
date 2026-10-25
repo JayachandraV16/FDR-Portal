@@ -1,0 +1,35 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Uploaded documents and generated files (never commit real or generated documents)
+backend/storage/
+storage/
+uploads/
+generated/
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
