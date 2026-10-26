@@ -1,11 +1,61 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Link, NavLink, Outlet } from "react-router-dom";
+
+import { useAuth } from "../auth/AuthContext";
+import { roleLabel } from "../lib/roles";
+
+function UserMenu() {
+  const { state, logout } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (state.status !== "authenticated") return null;
+  const { user } = state;
+
+  async function onLogout() {
+    setBusy(true);
+    setError(null);
+    try {
+      await logout();
+    } catch {
+      setError("Sign-out failed. Please try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="text-right leading-tight">
+        <p className="text-sm font-medium text-slate-900">{user.full_name}</p>
+        <p className="text-xs text-slate-500">
+          {roleLabel(user.role)} · {user.email}
+        </p>
+      </div>
+      <Link to="/change-password" className="text-xs text-slate-600 underline hover:text-slate-900">
+        Change password
+      </Link>
+      <button
+        type="button"
+        onClick={onLogout}
+        disabled={busy}
+        className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+      >
+        {busy ? "Signing out…" : "Sign out"}
+      </button>
+      {error && (
+        <span role="alert" className="text-xs text-red-700">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
 
 // Only the Overview page exists in Checkpoint 0. The rest are listed so the
 // intended navigation is visible, but they are disabled rather than faked.
 const NAV_ITEMS = [
   { label: "Overview", to: "/", available: true },
-  { label: "Institutions", available: false },
-  { label: "FDRs", available: false },
+  { label: "Institutions", to: "/institutions", available: true },
+  { label: "FDRs", to: "/fdrs", available: true },
   { label: "Documents", available: false },
   { label: "Verification", available: false },
   { label: "Alerts", available: false },
@@ -56,8 +106,8 @@ export default function AppShell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-          <span className="text-sm text-slate-600">Synthetic demonstration data only</span>
-          <span className="text-xs text-slate-400">Not signed in (authentication not built yet)</span>
+          <span className="text-sm text-slate-600">Demonstration data only — records are not verified</span>
+          <UserMenu />
         </header>
         <main className="flex-1 p-6">
           <Outlet />

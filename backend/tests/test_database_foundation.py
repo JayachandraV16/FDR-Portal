@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Bank, Base, Institution
-from app.seed import SYNTHETIC_BANKS, SYNTHETIC_INSTITUTIONS, seed
+from app.seed import DEMO_BANKS, DEMO_INSTITUTIONS, seed
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -37,13 +37,30 @@ def test_migration_matches_models(migrated_url):
     assert diff == []
 
 
-def test_seed_is_idempotent_and_synthetic(migrated_url):
+def test_seed_is_idempotent(migrated_url):
     engine = create_engine(migrated_url)
     with Session(engine) as s:
         first = seed(s)
         second = seed(s)
-        assert first == {"banks": len(SYNTHETIC_BANKS), "institutions": len(SYNTHETIC_INSTITUTIONS)}
+        assert first == {"banks": len(DEMO_BANKS), "institutions": len(DEMO_INSTITUTIONS)}
         assert second == {"banks": 0, "institutions": 0}
-        assert s.scalar(select(func.count()).select_from(Institution)) == len(SYNTHETIC_INSTITUTIONS)
-        names = list(s.scalars(select(Bank.name))) + list(s.scalars(select(Institution.name)))
-        assert all("(Synthetic)" in n for n in names)
+        assert s.scalar(select(func.count()).select_from(Institution)) == len(DEMO_INSTITUTIONS)
+        assert s.scalar(select(func.count()).select_from(Bank)) == len(DEMO_BANKS)
+
+
+def test_seed_leaves_existing_rows_untouched(migrated_url):
+    engine = create_engine(migrated_url)
+    with Session(engine) as s:
+        s.add(Bank(code="SYN-BANK-01", name="Sample National Bank (Synthetic)"))
+        s.add(Bank(code="SBI", name="Locally Edited Name"))
+        s.commit()
+        seed(s)
+        assert s.scalar(select(Bank.name).where(Bank.code == "SYN-BANK-01")) == "Sample National Bank (Synthetic)"
+        assert s.scalar(select(Bank.name).where(Bank.code == "SBI")) == "Locally Edited Name"
+        assert s.scalar(select(func.count()).select_from(Bank)) == len(DEMO_BANKS) + 1
+
+
+def test_demo_codes_are_unique_and_fit_the_schema():
+    codes = [c for c, _ in DEMO_BANKS] + [c for c, *_ in DEMO_INSTITUTIONS]
+    assert len(codes) == len(set(codes))
+    assert all(len(c) <= 32 for c in codes)
