@@ -1,7 +1,7 @@
 import { useAuth } from "../auth/AuthContext";
 import DemoNotice from "../components/DemoNotice";
 import RecentFdrs from "../dashboard/RecentFdrs";
-import { ActivityUnavailable, QuickActions } from "../dashboard/SidePanels";
+import { NeedsAttention, QuickActions, RecentActivity } from "../dashboard/SidePanels";
 import SummaryCards from "../dashboard/SummaryCards";
 import SystemStatus from "../dashboard/SystemStatus";
 import Welcome from "../dashboard/Welcome";
@@ -22,12 +22,13 @@ export default function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <NeedsAttention />
           <RecentFdrs />
         </div>
         <div className="space-y-6">
+          <RecentActivity />
           <SystemStatus />
           <QuickActions />
-          <ActivityUnavailable />
         </div>
       </div>
     </div>

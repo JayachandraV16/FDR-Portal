@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
+import { Alert } from "../components/FormParts";
 import DemoNotice from "../components/DemoNotice";
 import StatusBadge from "../components/StatusBadge";
 import { RetryButton } from "../dashboard/Panel";
+import { Icon } from "../components/icons";
 import { listBanks, listFdrs, listInstitutions, type FdrOut, type FdrStatus } from "../lib/api";
 import { FDR_STATUS_LABELS, formatDate, formatInr } from "../lib/format";
 import { describeError, useAsync } from "../lib/useAsync";
@@ -22,9 +25,13 @@ interface Applied {
   bank: string;
   institution: string;
   page: number;
+  sort: SortKey;
+  order: "asc" | "desc";
 }
 
-const EMPTY: Applied = { q: "", status: "", bank: "", institution: "", page: 1 };
+type SortKey = "created" | "number" | "principal" | "maturity" | "issue" | "status";
+
+const EMPTY: Applied = { q: "", status: "", bank: "", institution: "", page: 1, sort: "created", order: "desc" };
 
 const FIELD_CLASS =
   "mt-1 block w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:bg-slate-100 disabled:text-slate-500";
@@ -36,6 +43,15 @@ export default function FdrRegistry() {
 
   const [search, setSearch] = useState(""); // what the user typed
   const [applied, setApplied] = useState<Applied>(EMPTY); // what is actually requested
+
+  // A one-off confirmation handed over by the create/edit/submit pages. This page loads its data
+  // afresh when it opens, so what is listed always comes from the server, never from that message.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [flash, setFlash] = useState<string | null>((location.state as { flash?: string } | null)?.flash ?? null);
+  useEffect(() => {
+    if ((location.state as { flash?: string } | null)?.flash) navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   // Debounce typing into one request; a changed search always returns to page 1.
   useEffect(() => {
@@ -55,6 +71,8 @@ export default function FdrRegistry() {
           status: applied.status || undefined,
           bank_id: applied.bank || undefined,
           institution_id: institutionUser ? undefined : applied.institution || undefined,
+          // Sent only when it differs from the server's default (newest first), so the default request is unchanged.
+          ...(applied.sort === "created" && applied.order === "desc" ? {} : { sort: applied.sort, order: applied.order }),
         },
         signal,
       ),
@@ -62,6 +80,12 @@ export default function FdrRegistry() {
   );
 
   const change = (patch: Partial<Applied>) => setApplied((a) => ({ ...a, ...patch, page: 1 }));
+  // Choosing the sorted column again flips the direction; a new column starts ascending (created: newest first).
+  const sortBy = (key: SortKey) =>
+    setApplied((a) => ({
+      ...a, page: 1, sort: key,
+      order: a.sort === key ? (a.order === "asc" ? "desc" : "asc") : key === "created" ? "desc" : "asc",
+    }));
   const clearAll = () => {
     setSearch("");
     setApplied(EMPTY);
@@ -70,14 +94,36 @@ export default function FdrRegistry() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">FDR Registry</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Fixed deposit receipts visible to your account. This list is read-only.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">FDR Registry</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Fixed deposit receipts visible to your account.{" "}
+            {institutionUser
+              ? "Create a draft, then submit it for review when it is complete."
+              : "This list is read-only."}
+          </p>
+        </div>
+        {institutionUser && (
+          <Link
+            to="/fdrs/new"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+          >
+            Create FDR
+          </Link>
+        )}
       </div>
 
       <DemoNotice />
+
+      {flash && (
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <Alert tone="info">{flash}</Alert>
+          </div>
+          <RetryButton onClick={() => setFlash(null)} label="Dismiss" />
+        </div>
+      )}
 
       <section aria-labelledby="fdr-filters-heading" className="rounded border border-slate-200 bg-white p-4">
         <h2 id="fdr-filters-heading" className="sr-only">
@@ -185,7 +231,7 @@ export default function FdrRegistry() {
             </div>
           )}
 
-          {state.status === "success" && state.data.items.length > 0 && <FdrTable rows={state.data.items} />}
+          {state.status === "success" && state.data.items.length > 0 && <FdrTable rows={state.data.items} editableDrafts={institutionUser} sort={applied.sort} order={applied.order} onSort={sortBy} />}
 
           {state.status === "success" && state.data.total > PAGE_SIZE && (
             <nav aria-label="Pagination" className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
@@ -223,29 +269,59 @@ export default function FdrRegistry() {
   );
 }
 
-function FdrTable({ rows }: { rows: FdrOut[] }) {
+/** A column header the server can sort by. The direction is announced with aria-sort and drawn with CSS only,
+ * so the header's text is just its label. */
+function SortHeader({ label, column, sort, order, onSort, className = "" }: {
+  label: string; column: SortKey; sort: SortKey; order: "asc" | "desc"; onSort: (key: SortKey) => void; className?: string;
+}) {
+  const active = sort === column;
+  const icon = !active ? "sort" : order === "asc" ? "chevronUp" : "chevronDown";
+  return (
+    <th scope="col" aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"} className={`py-2 pr-4 font-medium ${className}`}>
+      <button type="button" onClick={() => onSort(column)} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-900">
+        {label}
+        <Icon name={icon} className={`h-3.5 w-3.5 ${active ? "" : "opacity-60"}`} />
+      </button>
+    </th>
+  );
+}
+
+function FdrTable({ rows, editableDrafts, sort, order, onSort }: {
+  rows: FdrOut[]; editableDrafts: boolean; sort: SortKey; order: "asc" | "desc"; onSort: (key: SortKey) => void;
+}) {
   const missing = <span className="text-slate-400">Not provided</span>;
+  const header = { sort, order, onSort };
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
         <caption className="sr-only">FDR records</caption>
         <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
           <tr>
-            <th scope="col" className="py-2 pr-4 font-medium">FDR number</th>
+            <SortHeader label="FDR number" column="number" {...header} />
             <th scope="col" className="py-2 pr-4 font-medium">Institution</th>
             <th scope="col" className="py-2 pr-4 font-medium">Bank</th>
-            <th scope="col" className="py-2 pr-4 text-right font-medium">Principal</th>
+            <SortHeader label="Principal" column="principal" className="text-right" {...header} />
             <th scope="col" className="py-2 pr-4 text-right font-medium">Interest rate</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Issued</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Matures</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Status</th>
-            <th scope="col" className="py-2 font-medium">Created</th>
+            <SortHeader label="Issued" column="issue" {...header} />
+            <SortHeader label="Matures" column="maturity" {...header} />
+            <SortHeader label="Status" column="status" {...header} />
+            <SortHeader label="Created" column="created" {...header} />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((fdr) => (
             <tr key={fdr.id}>
-              <th scope="row" className="whitespace-nowrap py-2 pr-4 font-medium text-slate-900">{fdr.fdr_number}</th>
+              <th scope="row" className="whitespace-nowrap py-2 pr-4 font-medium text-slate-900">
+                {fdr.fdr_number}
+                <Link to={`/fdrs/${fdr.id}`} aria-label={`View details of ${fdr.fdr_number}`} className="mt-0.5 block text-xs font-normal text-slate-700 underline hover:text-slate-900">
+                  View details
+                </Link>
+                {editableDrafts && (fdr.status === "DRAFT" || fdr.status === "CORRECTION_REQUESTED") && (
+                  <Link to={`/fdrs/${fdr.id}/edit`} className="mt-0.5 block text-xs font-normal text-slate-700 underline hover:text-slate-900">
+                    {fdr.status === "DRAFT" ? "Edit draft" : "Make corrections"}
+                  </Link>
+                )}
+              </th>
               <td className="py-2 pr-4 text-slate-700">
                 {fdr.institution.name}
                 <span className="block text-xs text-slate-500">{fdr.institution.code}</span>
@@ -264,14 +340,14 @@ function FdrTable({ rows }: { rows: FdrOut[] }) {
         </tbody>
       </table>
       <p className="mt-3 text-xs text-slate-500">
-        Newest first. “Accepted” means accepted after human review of the submitted information; it does not mean
+        Choose a column heading to sort; the default is newest first. “Accepted” means accepted after human review of the submitted information; it does not mean
         the FDR has been verified with the bank.
       </p>
     </div>
   );
 }
 
-function BankFilter({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+export function BankFilter({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const { state, reload } = useAsync((signal) => listBanks({ page_size: 500 }, signal));
   return (
     <div>
@@ -307,7 +383,7 @@ function BankFilter({ value, onChange }: { value: string; onChange: (id: string)
   );
 }
 
-function InstitutionFilter({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+export function InstitutionFilter({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const { state, reload } = useAsync((signal) => listInstitutions({ limit: 200 }, signal));
   return (
     <div>

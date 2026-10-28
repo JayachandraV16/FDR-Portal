@@ -9,6 +9,8 @@ os.environ["SECRET_KEY"] = "test-only-secret-key-not-for-real-use-0123456789"
 # Test client talks plain http://testserver, so Secure cookies would never be returned.
 # Permitted only because APP_ENV=test.
 os.environ["COOKIE_SECURE"] = "false"
+# No background extraction threads in tests: they would race the tests that drive the queue explicitly.
+os.environ["EXTRACTION_WORKERS"] = "0"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

@@ -514,11 +514,19 @@ def test_row_versions_are_untouched_by_reads(engine, matrix):
 
 
 # ---- 14. cache and write-method hygiene ------------------------------------------------------
-def test_no_write_methods_exist_on_fdr_routes(engine, matrix):
+def test_only_the_institution_draft_workflow_can_write_to_fdr_routes(engine, matrix):
+    """Create/edit/submit (institution users) and the three review decisions (AICTE roles) exist; see
+    test_fdr_write_api.py and test_fdr_review_api.py. Every other write shape is absent, and ADMIN,
+    who has neither role, is refused on all of them."""
     admin = actor_for(engine, "ADMIN", matrix)
     one = matrix.fdrs[("inst_a", "SUBMITTED")]
-    for method, path in (("POST", "/fdrs"), ("PUT", f"/fdrs/{one}"), ("PATCH", f"/fdrs/{one}"), ("DELETE", f"/fdrs/{one}"),
-                         ("POST", f"/fdrs/{one}/submit"), ("POST", f"/fdrs/{one}/accept")):
+    for method, path in (("PUT", f"/fdrs/{one}"), ("DELETE", f"/fdrs/{one}"), ("POST", f"/fdrs/{one}/status"),
+                         ("POST", f"/fdrs/{one}/withdraw")):
         r = admin.client.request(method, f"{API}{path}", json={}, headers=admin.headers)
         assert r.status_code in (404, 405), (method, path, r.status_code)
-    assert audit_rows(engine) == [] or all(not e.action.startswith("fdr.") for e in audit_rows(engine))
+    for method, path in (("POST", "/fdrs"), ("PATCH", f"/fdrs/{one}"), ("POST", f"/fdrs/{one}/submit"),
+                         ("POST", f"/fdrs/{one}/accept"), ("POST", f"/fdrs/{one}/reject"),
+                         ("POST", f"/fdrs/{one}/request-correction")):
+        r = admin.client.request(method, f"{API}{path}", json={"row_version": 1}, headers=admin.headers)
+        assert r.status_code == 403, (method, path, r.status_code)
+    assert all(not e.action.startswith("fdr.") for e in audit_rows(engine))

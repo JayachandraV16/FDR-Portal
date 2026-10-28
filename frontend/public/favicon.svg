@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="FDR Portal">
+  <rect width="48" height="48" rx="10" fill="#1e3a8a"/>
+  <path d="M15 9h14l7 7v21a2 2 0 0 1-2 2H15a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2z" fill="#f8fafc"/>
+  <path d="M29 9v5a2 2 0 0 0 2 2h5z" fill="#c7d2e8"/>
+  <path d="M17 22h14M17 27h14M17 32h8" stroke="#1e3a8a" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="35" cy="35" r="8" fill="#3b6fd4" stroke="#f8fafc" stroke-width="2"/>
+  <path d="m31.5 35 2.5 2.5 4.5-5" fill="none" stroke="#f8fafc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

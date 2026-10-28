@@ -1,4 +1,4 @@
-import { useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 
 const INPUT_CLASS =
   "block w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
@@ -8,19 +8,63 @@ const INPUT_CLASS =
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   hint?: string;
+  /** A validation message for this field; announced with the input and shown below it. */
+  error?: string;
 }
 
-export function TextField({ label, hint, ...input }: FieldProps) {
+export function TextField({ label, hint, error, ...input }: FieldProps) {
+  const id = useId();
+  const describedBy = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <input
+        id={id}
+        aria-describedby={describedBy}
+        aria-invalid={error ? true : undefined}
+        className={`${INPUT_CLASS} mt-1 ${error ? "border-red-500" : ""}`}
+        {...input}
+      />
+      {hint && (
+        <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs font-medium text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function SelectField({
+  label,
+  error,
+  children,
+  ...select
+}: { label: string; error?: string; children: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
   const id = useId();
   return (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-slate-700">
         {label}
       </label>
-      <input id={id} aria-describedby={hint ? `${id}-hint` : undefined} className={`${INPUT_CLASS} mt-1`} {...input} />
-      {hint && (
-        <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
-          {hint}
+      <select
+        id={id}
+        aria-describedby={error ? `${id}-error` : undefined}
+        aria-invalid={error ? true : undefined}
+        className={`${INPUT_CLASS} mt-1 ${error ? "border-red-500" : ""}`}
+        {...select}
+      >
+        {children}
+      </select>
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs font-medium text-red-700">
+          {error}
         </p>
       )}
     </div>

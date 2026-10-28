@@ -275,14 +275,22 @@ describe("navigation", () => {
         "GET /health": jsonReply(200, { status: "ok", service: "s", version: "1", environment: "development" }),
         "GET /health/ready": jsonReply(200, { status: "ready", database: "ok" }),
         "GET /fdrs": jsonReply(200, { items: [], page: 1, page_size: 1, total: 0, total_pages: 0 }),
+        "GET /alerts": jsonReply(200, { generated_on: "2026-10-27", basis: "computed", categories: [], items: [] }),
+        "GET /activity": jsonReply(200, { items: [] }),
+        "GET /reports/summary": jsonReply(200, {
+          generated_on: "2026-10-27", scope: "all", fdr_total: 0, by_status: [], by_institution: [], principal_live_total: "0.00",
+          maturities: [], release: [], release_status: { available: true, note: null }, verification: [],
+          verification_status: { available: true, note: null }, exceptions: [], exceptions_status: { available: true, note: null },
+        }),
       },
     });
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const link = within(nav).getByRole("link", { name: "Institutions" });
     expect(link).toHaveAttribute("href", "/institutions");
     expect(link.textContent).not.toMatch(/not built/i);
-    // Other unfinished sections are unchanged.
-    expect(within(nav).getByText("Documents").parentElement).toHaveTextContent(/not built/i);
+    // The other sections are real pages too: no sidebar entry is a placeholder any more.
+    expect(within(nav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/documents");
+    expect(nav.textContent).not.toMatch(/not built/i);
 
     await userEvent.click(link);
     expect(await heading()).toBeInTheDocument();

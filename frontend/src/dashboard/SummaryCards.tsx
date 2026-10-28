@@ -1,4 +1,6 @@
-import { listFdrs, listInstitutions, listUsers, type FdrStatus } from "../lib/api";
+import { getReport, listFdrs, listInstitutions, listUsers, type FdrStatus, type ReportOut } from "../lib/api";
+import { formatInr } from "../lib/format";
+import { canReview } from "../lib/roles";
 import { describeError, useAsync } from "../lib/useAsync";
 import { RetryButton } from "./Panel";
 
@@ -51,18 +53,6 @@ function metricsFor(role: string): Metric[] {
   return metrics;
 }
 
-// Metrics the current API cannot answer correctly. Shown as unavailable, never estimated.
-const UNSUPPORTED: Array<{ label: string; reason: string }> = [
-  {
-    label: "Total principal amount",
-    reason: "No aggregate endpoint exists; summing one page of FDRs would give a wrong total.",
-  },
-  {
-    label: "Maturing soon",
-    reason: "The FDR list has no maturity-date filter or count.",
-  },
-];
-
 const CARD = "rounded border border-slate-200 bg-white p-4";
 
 function MetricCard({ metric }: { metric: Metric }) {
@@ -92,6 +82,76 @@ function MetricCard({ metric }: { metric: Metric }) {
   );
 }
 
+interface ReportMetric {
+  key: string;
+  label: string;
+  hint?: string;
+  value: (r: ReportOut) => string | null; // null means "unavailable for this role or database state"
+  reason?: (r: ReportOut) => string | undefined;
+}
+
+const bucket = (r: ReportOut, key: string) => r.maturities.find((m) => m.key === key)?.count ?? 0;
+const total = (rows: Array<{ count: number }>) => rows.reduce((sum, row) => sum + row.count, 0);
+
+function reportMetrics(role: string): ReportMetric[] {
+  const metrics: ReportMetric[] = [
+    { key: "principal", label: "Principal of live FDRs", hint: "Submitted, returned or accepted. As submitted; not bank-verified.", value: (r) => formatInr(r.principal_live_total) },
+    { key: "maturing", label: "Maturing within 30 days", hint: "Live FDRs only.", value: (r) => bucket(r, "D30").toLocaleString("en-IN") },
+    { key: "overdue", label: "Past maturity", hint: "Live FDRs whose maturity date has passed.", value: (r) => bucket(r, "OVERDUE").toLocaleString("en-IN") },
+  ];
+  if (canReview(role)) {
+    metrics.push(
+      {
+        key: "unanalysed", label: "Documents not yet analysed", hint: "Open FDRs whose documents have not been checked.",
+        value: (r) => (r.verification_status.available ? (r.verification.find((v) => v.key === "NOT_ANALYZED")?.count ?? 0).toLocaleString("en-IN") : null),
+        reason: (r) => r.verification_status.note ?? undefined,
+      },
+      {
+        key: "exceptions", label: "Open exceptions", hint: "Mismatches, missing documents, incomplete or overdue records.",
+        value: (r) => (r.exceptions_status.available ? total(r.exceptions).toLocaleString("en-IN") : null),
+        reason: (r) => r.exceptions_status.note ?? undefined,
+      },
+    );
+  }
+  return metrics;
+}
+
+/** Figures that need the whole authorised dataset (principal, maturities, exceptions) come from the server's
+ * report endpoint in one request; nothing is summed or estimated in the browser. */
+function ReportCards({ role }: { role: string }) {
+  const { state, reload } = useAsync((signal) => getReport(signal));
+  return (
+    <>
+      {reportMetrics(role).map((metric) => {
+        const value = state.status === "success" ? metric.value(state.data) : null;
+        return (
+          <div key={metric.key} className={CARD} aria-busy={state.status === "loading"} data-testid={`metric-${metric.key}`}>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
+            {state.status === "loading" && <p role="status" className="mt-2 text-sm text-slate-500">Loading…</p>}
+            {state.status === "success" && value !== null && (
+              <p className="mt-1 text-3xl font-semibold tabular-nums text-slate-900" aria-label={`${metric.label}: ${value}`}>{value}</p>
+            )}
+            {state.status === "success" && value === null && (
+              <div className="mt-2">
+                <p className="text-sm font-medium text-slate-700">Unavailable</p>
+                <p className="mt-1 text-xs text-slate-500">{metric.reason?.(state.data) ?? "Not available for your role."}</p>
+              </div>
+            )}
+            {state.status === "error" && (
+              <div role="alert" className="mt-2 space-y-2">
+                <p className="text-sm font-medium text-red-800">Unavailable</p>
+                <p className="text-xs text-slate-600">{describeError(state.error)}</p>
+                <RetryButton onClick={reload} />
+              </div>
+            )}
+            {metric.hint && state.status !== "error" && value !== null && <p className="mt-2 text-xs text-slate-500">{metric.hint}</p>}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export default function SummaryCards({ role }: { role: string }) {
   return (
     <section aria-labelledby="summary-heading">
@@ -102,13 +162,7 @@ export default function SummaryCards({ role }: { role: string }) {
         {metricsFor(role).map((metric) => (
           <MetricCard key={metric.key} metric={metric} />
         ))}
-        {UNSUPPORTED.map((item) => (
-          <div key={item.label} className={`${CARD} border-dashed bg-slate-50`} data-testid="metric-unsupported">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
-            <p className="mt-2 text-sm font-medium text-slate-700">Unavailable</p>
-            <p className="mt-1 text-xs text-slate-500">{item.reason}</p>
-          </div>
-        ))}
+        <ReportCards role={role} />
       </div>
     </section>
   );

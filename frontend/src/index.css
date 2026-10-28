@@ -1,5 +1,114 @@
 @import "tailwindcss";
 
+/* Allow explicit `dark:` utilities for the rare place a token is not enough. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens
+ * -------------
+ * Every colour in the interface is a Tailwind palette utility (bg-slate-50, text-red-800 ...), which resolves to a
+ * CSS variable. The light theme is Tailwind's own palette. The dark theme below redefines those same variables, so
+ * all existing components change theme together and nothing needs a per-component override:
+ *   - the slate scale is inverted (slate-900 is the primary text colour in both themes, slate-50 the page);
+ *   - `white` is the card surface, which is dark in the dark theme (so `text-white` on a slate-900 control stays
+ *     readable: it becomes dark text on a light control);
+ *   - status colours (red, amber, sky, emerald) keep their meaning: tinted backgrounds, light foregrounds.
+ * `scripts/contrast-check.mjs` computes the contrast ratio of the pairs actually used, in both themes.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Nirmala UI", "Noto Sans", "Noto Sans Devanagari",
+    "Kohinoor Devanagari", "Devanagari Sangam MN", Mangal, Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Brand: fixed in both themes (the login panel and the logo). */
+  --color-brand-900: #14234b;
+  --color-brand-700: #1e3a8a;
+  --color-brand-500: #3b6fd4;
+  --color-on-brand: #f8fafc;
+  --color-on-brand-muted: #c7d2e8;
+  --color-focus: #2563eb;
+}
+
+:root {
+  color-scheme: light;
+  --color-focus: #2563eb;
+
+  /* Two deliberate departures from Tailwind's defaults, found by scripts/contrast-check.mjs:
+     borders of form controls and buttons (slate-300) need 3:1 against the surface, and the faintest text colour
+     (slate-400, used for placeholders and "Not provided") needs 4.5:1. */
+  --color-slate-300: #7d8ca2;
+  --color-slate-400: #5f6e84;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-focus: #7fb2ff;
+
+  --color-white: #151e30;
+  --color-slate-50: #0d1424;
+  --color-slate-100: #1b263b;
+  --color-slate-200: #2a3750;
+  --color-slate-300: #6a7a98;
+  --color-slate-400: #8493ae;
+  --color-slate-500: #98a6bf;
+  --color-slate-600: #b0bcd1;
+  --color-slate-700: #c8d1e1;
+  --color-slate-800: #dde4f0;
+  --color-slate-900: #eef2f8;
+  --color-slate-950: #f8fafc;
+
+  --color-red-50: #2b1317;
+  --color-red-100: #3b1a1f;
+  --color-red-200: #5c2328;
+  --color-red-300: #80313a;
+  --color-red-500: #f87171;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+
+  --color-amber-50: #2a200c;
+  --color-amber-100: #3a2b0e;
+  --color-amber-200: #5c4410;
+  --color-amber-300: #7d5b14;
+  --color-amber-400: #d9a21b;
+  --color-amber-500: #f2b633;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #fef3c7;
+
+  --color-sky-50: #0c2233;
+  --color-sky-200: #1d4b6b;
+  --color-sky-300: #2b6a96;
+  --color-sky-600: #7cc4f0;
+  --color-sky-900: #bae6fd;
+
+  --color-emerald-50: #0b2a1f;
+  --color-emerald-300: #1f6b4d;
+  --color-emerald-600: #34d399;
+  --color-emerald-900: #a7f3d0;
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+/* A visible keyboard focus everywhere, whatever a component's own styling. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Honour the operating system's request for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Dense financial tables stay legible when a label is long (translations, institution names). */
+th, td {
+  overflow-wrap: anywhere;
 }

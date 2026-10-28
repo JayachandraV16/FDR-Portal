@@ -20,6 +20,7 @@ ALLOWED_DETAIL_KEYS: dict[str, str] = {
     "target_user_id": "str",
     "target_institution_id": "str",
     "target_fdr_id": "str",
+    "target_document_id": "str",
     "old_role": "str",
     "new_role": "str",
     "old_is_active": "bool",
@@ -33,6 +34,9 @@ ALLOWED_DETAIL_KEYS: dict[str, str] = {
     "filters": "str_list",  # filter NAMES only
     "failed_login_count": "int",
     "locked": "bool",
+    "category": "str",  # document category code (an enum value, never a filename)
+    "size_bytes": "int",
+    "content_type": "str",  # verified media type, e.g. "application/pdf"
 }
 
 # Matched case-insensitively against key names.

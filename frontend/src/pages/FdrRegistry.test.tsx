@@ -282,6 +282,21 @@ describe("filters", () => {
     expect(api.callsTo("GET /fdrs").every((c) => c.query.institution_id === undefined)).toBe(true);
   });
 
+  it("sorts on the server from the column headings, flips direction, and returns to page 1", async () => {
+    const api = await openRegistry({ visible: sample() });
+    await waitForRows("FDR-0001");
+    expect(lastFdrQuery(api).sort).toBeUndefined(); // the default request is unchanged
+    const heading = (name: string) => screen.getByRole("columnheader", { name });
+    expect(heading("Created")).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(within(heading("Principal")).getByRole("button"));
+    await waitFor(() => expect(lastFdrQuery(api)).toMatchObject({ sort: "principal", order: "asc", page: "1" }));
+    expect(heading("Principal")).toHaveAttribute("aria-sort", "ascending");
+    await userEvent.click(within(heading("Principal")).getByRole("button"));
+    await waitFor(() => expect(lastFdrQuery(api)).toMatchObject({ sort: "principal", order: "desc" }));
+    expect(heading("Principal")).toHaveAttribute("aria-sort", "descending");
+    expect(heading("Created")).toHaveAttribute("aria-sort", "none");
+  });
+
   it("combines filters and clears them all together", async () => {
     const api = await openRegistry({ visible: sample() });
     await waitForRows("FDR-0001");
@@ -426,15 +441,16 @@ describe("integrity of what is displayed", () => {
     expect(within(screen.getByRole("table")).queryByText(/verified/i)).not.toBeInTheDocument();
   });
 
-  it("is read-only: no mutating controls, and rows are neither links nor buttons", async () => {
+  it("is read-only: no mutating controls; the only buttons are sort headings and the only links open details", async () => {
     await openRegistry();
     await waitForRows("FDR-0001");
     expect(
-      screen.queryByRole("button", { name: /create|add|new|edit|delete|remove|submit|accept|reject|correction|upload|release|refund|withdraw/i }),
+      screen.queryByRole("button", { name: /(create|add|new|edit|delete|remove|submit|accept|reject|correction|upload|release|refund|withdraw)/i }),
     ).not.toBeInTheDocument();
     const table = within(screen.getByRole("table"));
-    expect(table.queryAllByRole("link")).toHaveLength(0);
-    expect(table.queryAllByRole("button")).toHaveLength(0);
+    expect(table.queryAllByRole("link").every((l) => /^\/fdrs\/[^/]+$/.test(l.getAttribute("href") ?? ""))).toBe(true);
+    const bodyButtons = within(table.getAllByRole("rowgroup")[1]).queryAllByRole("button");
+    expect(bodyButtons).toHaveLength(0);
   });
 });
 
@@ -445,13 +461,21 @@ describe("navigation and route protection", () => {
       routes: {
         "GET /health": jsonReply(200, { status: "ok", service: "s", version: "1", environment: "development" }),
         "GET /health/ready": jsonReply(200, { status: "ready", database: "ok" }),
+        "GET /alerts": jsonReply(200, { items: [] }),
+        "GET /activity": jsonReply(200, { items: [] }),
+        "GET /reports/summary": jsonReply(200, {
+          generated_on: "2026-10-27", scope: "all", fdr_total: 0, by_status: [], by_institution: [], principal_live_total: "0.00",
+          maturities: [], release: [], release_status: { available: true, note: null }, verification: [],
+          verification_status: { available: true, note: null }, exceptions: [], exceptions_status: { available: true, note: null },
+        }),
       },
     });
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const link = within(nav).getByRole("link", { name: "FDRs" });
     expect(link).toHaveAttribute("href", "/fdrs");
     expect(link.textContent).not.toMatch(/not built/i);
-    expect(within(nav).getByText("Documents").parentElement).toHaveTextContent(/not built/i);
+    expect(within(nav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/documents");
+    expect(nav.textContent).not.toMatch(/not built/i); // every section is a real page now
     await userEvent.click(link);
     expect(await screen.findByRole("heading", { name: "FDR Registry", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("FDR-0001")).toBeInTheDocument();

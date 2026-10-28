@@ -1,5 +1,6 @@
 """Migration 0003 on PostgreSQL (skipped unless TEST_DATABASE_URL is set).
 
+Tests are pinned to revision 0003 (not "head"), so later migrations do not change what they check.
 Every test starts by resetting the schema of the verified *_test database only
 (pg_support.reset_schema re-checks current_database() before dropping anything).
 """
@@ -85,9 +86,9 @@ def test_upgrade_0002_to_0003_preserves_all_existing_data(pg):
         assert conn.execute(text("SELECT action FROM audit_logs")).scalar() == "pre.existing"
 
 
-def test_upgrade_from_scratch_to_head_reaches_0003(pg):
+def test_upgrade_from_scratch_to_0003_creates_the_fdr_tables(pg):
     engine, cfg = pg
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0003")
     assert _version(engine) == "0003" and NEW_TABLES <= _tables(engine)
 
 
@@ -109,7 +110,7 @@ def test_0003_does_not_touch_the_existing_audit_trigger_or_function(pg):
 @pytest.fixture
 def populated(pg):
     engine, cfg = pg
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0003")
     p = seed_prereqs(engine)
     fdr_id = add_fdr(engine, p)
     history_id = add_history(engine, p, fdr_id)
@@ -225,12 +226,12 @@ def test_downgrade_with_explicit_override_removes_only_the_0003_objects(populate
 def test_downgrade_of_empty_tables_needs_no_override_and_reupgrade_works(pg, monkeypatch):
     engine, cfg = pg
     monkeypatch.delenv("FDR_ALLOW_DESTRUCTIVE_DOWNGRADE", raising=False)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0003")
     p = seed_prereqs(engine)
     command.downgrade(cfg, "0002")
     assert NEW_TABLES.isdisjoint(_tables(engine)) and _version(engine) == "0002"
     assert _count(engine, "institutions") == 2 and _count(engine, "users") == 1  # pre-existing data kept
-    command.upgrade(cfg, "head")  # re-upgrade
+    command.upgrade(cfg, "0003")  # re-upgrade
     assert NEW_TABLES <= _tables(engine) and _version(engine) == "0003"
     add_fdr(engine, p)  # and the recreated schema is functional
     add_history(engine, p, add_fdr(engine, p, fdr_number="Z", fdr_number_normalized="Z"))

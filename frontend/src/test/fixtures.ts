@@ -1,4 +1,4 @@
-import type { AuthUser, FdrOut, SessionResponse } from "../lib/api";
+import type { AuthUser, DocumentCheckSummary, FdrOut, SessionResponse } from "../lib/api";
 
 // Shape of backend/app/schemas/auth.py: UserOut and SessionResponse.
 export function makeUser(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -47,6 +47,15 @@ export function makeFdr(overrides: Partial<FdrOut> = {}): FdrOut {
     updated_at: "2026-10-01T10:00:00Z",
     submitted_at: "2026-10-01T10:00:00Z",
     decided_at: null,
+    ...overrides,
+  };
+}
+
+// Shape of backend/app/schemas/extractions.py: DocumentCheckSummary. The default is the neutral state.
+export function makeSummary(overrides: Partial<DocumentCheckSummary> = {}): DocumentCheckSummary {
+  return {
+    status: "NOT_ANALYZED", documents_total: 1, documents_analyzed: 0, documents_pending: 0, documents_failed: 0,
+    mismatch_count: 0, ambiguous_count: 0, not_found_count: 0, not_comparable_count: 0, match_count: 0, mismatch_fields: [],
     ...overrides,
   };
 }

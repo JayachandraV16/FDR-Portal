@@ -109,11 +109,11 @@ describe("temporary password -> new password -> application", () => {
 
   it("still returns to an ordinary page that required sign-in", async () => {
     statefulBackend({ startsTemporary: false });
-    renderApp("/reports");
+    renderApp("/no-such-page");
     await screen.findByRole("heading", { name: "Sign in" });
     await signIn(NEW);
     expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
-    expect(location()).toBe("/reports");
+    expect(location()).toBe("/no-such-page");
   });
 
   it("does not send a user who signed out of the change-password page back to it", async () => {

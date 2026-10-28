@@ -30,3 +30,29 @@ export const FDR_STATUS_LABELS: Record<string, string> = {
 };
 
 export const fdrStatusLabel = (status: string): string => FDR_STATUS_LABELS[status] ?? status;
+
+/** "2026-10-27T09:05:00Z" -> "27 Oct 2026, 09:05 UTC". Always UTC, so the text never depends on the
+ * viewer's timezone settings. */
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} UTC`;
+}
+
+export const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
+  FDR_CERTIFICATE: "FDR certificate / receipt",
+  SECURITY_DEPOSIT_PROOF: "Security deposit proof",
+  SUPPORTING_LETTER: "Supporting letter",
+  OTHER: "Other supporting document",
+};
+
+export const documentCategoryLabel = (category: string): string => DOCUMENT_CATEGORY_LABELS[category] ?? category;
+
+/** 2048 -> "2.0 KB". Binary units, one decimal place above a kilobyte. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

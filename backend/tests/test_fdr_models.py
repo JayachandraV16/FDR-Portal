@@ -132,12 +132,65 @@ def test_snapshot_validator_accepts_plain_json_values():
 
 
 # ---- migration graph and structure -----------------------------------------------------------
-def test_revision_graph_is_linear_and_0003_depends_on_0002():
+def test_revision_graph_is_linear_and_each_revision_depends_on_the_previous_one():
     script = ScriptDirectory.from_config(alembic_config("sqlite://"))
-    assert script.get_heads() == ["0003"]
-    rev = script.get_revision("0003")
-    assert rev.down_revision == "0002"
-    assert [r.revision for r in script.walk_revisions()] == ["0003", "0002", "0001"]
+    assert script.get_heads() == ["0007"]
+    assert script.get_revision("0003").down_revision == "0002"
+    assert script.get_revision("0004").down_revision == "0003"
+    assert script.get_revision("0005").down_revision == "0004"
+    assert script.get_revision("0006").down_revision == "0005"
+    assert script.get_revision("0007").down_revision == "0006"
+    assert [r.revision for r in script.walk_revisions()] == ["0007", "0006", "0005", "0004", "0003", "0002", "0001"]
+
+
+def test_0004_only_creates_its_own_table_and_never_touches_existing_ones():
+    source = (BACKEND_DIR / "alembic" / "versions" / "0004_fdr_documents.py").read_text(encoding="utf-8")
+    forbidden = re.compile(
+        r"op\.(alter_column|add_column|drop_column|rename_table|drop_constraint)|"
+        r"ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|TRUNCATE|INSERT\s+INTO",
+        re.IGNORECASE,
+    )
+    assert forbidden.findall(source) == []
+    assert source.count("op.create_table(") == 1 and re.search(r'op\.create_table\(\s*"fdr_documents"', source)
+    assert source.count("op.drop_table(") == 1 and 'op.drop_table("fdr_documents")' in source
+
+
+def test_0005_only_creates_its_own_table_and_never_touches_existing_ones():
+    source = (BACKEND_DIR / "alembic" / "versions" / "0005_document_extractions.py").read_text(encoding="utf-8")
+    forbidden = re.compile(
+        r"op\.(alter_column|add_column|drop_column|rename_table|drop_constraint)|"
+        r"ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|TRUNCATE|INSERT\s+INTO",
+        re.IGNORECASE,
+    )
+    assert forbidden.findall(source) == []
+    assert source.count("op.create_table(") == 1 and re.search(r'op\.create_table\(\s*"fdr_document_extractions"', source)
+    assert source.count("op.drop_table(") == 1 and 'op.drop_table("fdr_document_extractions")' in source
+
+
+def test_0006_only_creates_its_own_table_and_never_touches_existing_ones():
+    source = (BACKEND_DIR / "alembic" / "versions" / "0006_extraction_jobs.py").read_text(encoding="utf-8")
+    forbidden = re.compile(
+        r"op\.(alter_column|add_column|drop_column|rename_table|drop_constraint)|"
+        r"ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|TRUNCATE|INSERT\s+INTO",
+        re.IGNORECASE,
+    )
+    assert forbidden.findall(source) == []
+    assert source.count("op.create_table(") == 1 and re.search(r'op\.create_table\(\s*"fdr_extraction_jobs"', source)
+    assert source.count("op.drop_table(") == 1 and 'op.drop_table("fdr_extraction_jobs")' in source
+
+
+def test_0007_only_creates_its_own_table_and_never_touches_existing_ones():
+    source = (BACKEND_DIR / "alembic" / "versions" / "0007_chat_feedback.py").read_text(encoding="utf-8")
+    forbidden = re.compile(
+        r"op\.(alter_column|add_column|drop_column|rename_table|drop_constraint)|"
+        r"ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|TRUNCATE|INSERT\s+INTO",
+        re.IGNORECASE,
+    )
+    assert forbidden.findall(source) == []
+    assert source.count("op.create_table(") == 1 and re.search(r'op\.create_table\(\s*"chat_feedback"', source)
+    assert source.count("op.drop_table(") == 1 and 'op.drop_table("chat_feedback")' in source
+    for forbidden_column in ("message", "prompt", "question", "answer", "reply_text", "comment", "ip_address", "token"):
+        assert f'sa.Column("{forbidden_column}"' not in source  # the table holds no conversation content
 
 
 def test_migration_file_only_creates_and_never_touches_existing_tables():

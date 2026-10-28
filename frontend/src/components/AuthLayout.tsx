@@ -1,21 +1,23 @@
 import type { ReactNode } from "react";
 
+import { Wordmark } from "./brand";
+
 /** Shared frame for the public login page and the password-change screen. */
 export default function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 lg:flex-row">
-      <aside className="bg-slate-900 px-6 py-8 text-slate-100 lg:flex lg:w-[42%] lg:flex-col lg:justify-between lg:px-12 lg:py-14">
+      <aside className="bg-brand-900 px-6 py-8 text-on-brand lg:flex lg:w-[42%] lg:flex-col lg:justify-between lg:px-12 lg:py-14">
         <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-slate-400">SIH 2026 · PS 26265</p>
-          <h1 className="mt-4 text-2xl font-semibold leading-snug lg:text-3xl">
+          <Wordmark tone="on-brand" />
+          <h1 className="mt-8 text-2xl font-semibold leading-snug lg:text-3xl">
             FDR &amp; Security Deposit Portal
           </h1>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-300">
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-on-brand-muted">
             Centralised record-keeping of fixed deposit receipts and security deposits held by
             educational institutions, with role-based access and an audit trail.
           </p>
         </div>
-        <p className="mt-6 hidden max-w-md text-xs leading-relaxed text-slate-400 lg:block">
+        <p className="mt-6 hidden max-w-md text-xs leading-relaxed text-on-brand-muted lg:block">
           Authorised users only. Activity is recorded. Submitted details are reviewed by officials
           and are not a bank verification.
         </p>

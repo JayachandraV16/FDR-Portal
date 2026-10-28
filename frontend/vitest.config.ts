@@ -10,5 +10,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     restoreMocks: true,
+    // Lets a test read src/index.css as text (the theme-token checks); styles are not otherwise processed.
+    css: { include: [/index\.css\?raw/] },
   },
 });

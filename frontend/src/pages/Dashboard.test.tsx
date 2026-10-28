@@ -27,6 +27,12 @@ function fdrEndpoint(totals: Record<string, number>, items: FdrOut[] = []): Hand
 }
 const institutionsEndpoint = (total = 4, items = [INSTITUTION]): Handler => jsonReply(200, { items, total, limit: 1, offset: 0 });
 
+const REPORT = {
+  generated_on: "2026-10-27", scope: "all", fdr_total: 0, by_status: [], by_institution: [], principal_live_total: "0.00",
+  maturities: [], release: [], release_status: { available: true, note: null }, verification: [],
+  verification_status: { available: true, note: null }, exceptions: [], exceptions_status: { available: true, note: null },
+};
+
 interface Options { role?: string; routes?: Parameters<typeof installFakeApi>[0] }
 
 async function openDashboard({ role = "AICTE_REVIEWER", routes = {} }: Options = {}) {
@@ -42,6 +48,9 @@ async function openDashboard({ role = "AICTE_REVIEWER", routes = {} }: Options =
       "GET /fdrs": fdrEndpoint({}),
       "GET /institutions": institutionsEndpoint(),
       "GET /users": jsonReply(200, { items: [], total: 3, limit: 1, offset: 0 }),
+      "GET /reports/summary": jsonReply(200, REPORT),
+      "GET /alerts": jsonReply(200, { items: [] }),
+      "GET /activity": jsonReply(200, { items: [] }),
       ...routes,
     },
     { dashboardDefaults: false },
@@ -138,7 +147,7 @@ describe("failures are never shown as zeros", () => {
 
   it("says when the server cannot be reached, with no numbers invented", async () => {
     await openDashboard({
-      routes: { "GET /fdrs": networkError, "GET /institutions": networkError, "GET /health": networkError, "GET /health/ready": networkError },
+      routes: { "GET /fdrs": networkError, "GET /institutions": networkError, "GET /health": networkError, "GET /health/ready": networkError, "GET /reports/summary": networkError, "GET /alerts": networkError, "GET /activity": networkError },
     });
     for (const key of ["total", "submitted", "correction", "accepted", "rejected", "institutions"]) {
       expect(await within(card(key)).findByRole("alert")).toHaveTextContent("Cannot reach the server");
@@ -218,24 +227,100 @@ describe("system status", () => {
   });
 });
 
-describe("unsupported capabilities", () => {
-  it("shows principal total and maturity metrics as unavailable with the reason", async () => {
-    await openDashboard();
-    const unsupported = screen.getAllByTestId("metric-unsupported");
-    expect(unsupported).toHaveLength(2);
-    expect(unsupported[0]).toHaveTextContent("Total principal amount");
-    expect(unsupported[0]).toHaveTextContent("Unavailable");
-    expect(unsupported[0]).toHaveTextContent(/no aggregate endpoint/i);
-    expect(unsupported[1]).toHaveTextContent("Maturing soon");
-    expect(unsupported[1]).toHaveTextContent(/no maturity-date filter/i);
+describe("report-backed metrics and panels", () => {
+  const maturities = [
+    { key: "OVERDUE", label: "Past maturity", count: 2, principal: "20.00" },
+    { key: "D30", label: "Within 30 days", count: 5, principal: "50.00" },
+  ];
+
+  it("shows principal and maturity figures exactly as the report endpoint returns them", async () => {
+    await openDashboard({
+      routes: { "GET /reports/summary": jsonReply(200, { ...REPORT, principal_live_total: "12345678.90", maturities }) },
+    });
+    await cardValue("principal", "₹1,23,45,678.90");
+    await cardValue("maturing", "5");
+    await cardValue("overdue", "2");
   });
 
-  it("shows no recent activity, only an explanation, and requests no audit data", async () => {
-    const api = await openDashboard();
+  it("marks a report metric unavailable (not zero) when the report cannot be loaded, and recovers on retry", async () => {
+    await openDashboard({
+      routes: { "GET /reports/summary": [textReply(500), jsonReply(200, { ...REPORT, maturities })] },
+    });
+    const failed = await within(card("principal")).findByRole("alert");
+    expect(failed).toHaveTextContent("Unavailable");
+    expect(within(card("principal")).queryByText("₹0.00")).not.toBeInTheDocument();
+    await userEvent.click(within(card("principal")).getByRole("button", { name: "Retry" }));
+    await cardValue("principal", "₹0.00");
+    await cardValue("maturing", "5");
+  });
+
+  it("tells reviewers when the server cannot supply exceptions, instead of showing zero", async () => {
+    await openDashboard({
+      routes: { "GET /reports/summary": jsonReply(200, { ...REPORT, exceptions_status: { available: false, note: "Document tables are not set up yet." } }) },
+    });
+    expect(await within(card("exceptions")).findByText("Unavailable")).toBeInTheDocument();
+    expect(card("exceptions")).toHaveTextContent("Document tables are not set up yet.");
+  });
+
+  it("does not offer reviewer-only figures to an institution user", async () => {
+    await openDashboard({ role: "INSTITUTION_USER" });
+    await cardValue("principal", "₹0.00");
+    expect(screen.queryByTestId("metric-exceptions")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("metric-unanalysed")).not.toBeInTheDocument();
+  });
+
+  it("lists the most urgent alerts with links, from the alerts endpoint", async () => {
+    await openDashboard({
+      routes: {
+        "GET /alerts": jsonReply(200, { items: [
+          { severity: "HIGH", category: "OVERDUE", fdr_id: "f1", fdr_number: "ALR-1", institution_code: "PICT", message: "Matured 3 days ago.", link: "/fdrs/f1" },
+        ] }),
+      },
+    });
+    const panel = screen.getByRole("region", { name: "Needs attention" });
+    expect(await within(panel).findByRole("link", { name: "ALR-1" })).toHaveAttribute("href", "/fdrs/f1");
+    expect(panel).toHaveTextContent("Matured 3 days ago.");
+  });
+
+  it("says nothing needs attention only when the alerts endpoint returns none", async () => {
+    await openDashboard();
+    expect(await screen.findByText("Nothing needs attention right now.")).toBeInTheDocument();
+  });
+
+  it("shows an alerts failure as an error with retry, never as 'nothing needs attention'", async () => {
+    await openDashboard({ routes: { "GET /alerts": [textReply(500), jsonReply(200, { items: [] })] } });
+    const panel = screen.getByRole("region", { name: "Needs attention" });
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/could not load alerts/i);
+    expect(panel).not.toHaveTextContent("Nothing needs attention");
+    await userEvent.click(within(panel).getByRole("button", { name: "Retry" }));
+    expect(await within(panel).findByText("Nothing needs attention right now.")).toBeInTheDocument();
+  });
+
+  it("lists recent workflow activity with roles (not names) and links to the FDR", async () => {
+    await openDashboard({
+      routes: {
+        "GET /activity": jsonReply(200, { items: [
+          { occurred_at: "2026-10-26T10:00:00Z", fdr_id: "f9", fdr_number: "ACT-9", institution_name: "PICT",
+            from_status: "SUBMITTED", to_status: "ACCEPTED", actor_role: "AICTE_APPROVER" },
+        ] }),
+      },
+    });
     const panel = screen.getByRole("region", { name: "Recent activity" });
-    expect(panel).toHaveTextContent("Not available");
-    expect(panel).toHaveTextContent(/does not yet provide a way to read audit events/i);
-    expect(api.calls.some((c) => /audit|activity|history/i.test(c.path))).toBe(false);
+    expect(await within(panel).findByRole("link", { name: "ACT-9" })).toHaveAttribute("href", "/fdrs/f9");
+    expect(panel).toHaveTextContent("Submitted → Accepted");
+    expect(panel).toHaveTextContent("AICTE approver");
+  });
+
+  it("shows an activity failure as an error, not as an empty list", async () => {
+    await openDashboard({ routes: { "GET /activity": textReply(500) } });
+    const panel = screen.getByRole("region", { name: "Recent activity" });
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/could not load activity/i);
+    expect(panel).not.toHaveTextContent("No workflow activity yet.");
+  });
+
+  it("says there is no activity when the endpoint returns none", async () => {
+    await openDashboard();
+    expect(await screen.findByText("No workflow activity yet.")).toBeInTheDocument();
   });
 });
 
@@ -286,8 +371,9 @@ describe("role and institution context", () => {
   it("describes the current application state accurately in the quick actions", async () => {
     await openDashboard();
     const panel = screen.getByRole("region", { name: "Quick actions" });
-    expect(panel).toHaveTextContent(/institutions and fdr registry pages are available from the sidebar/i);
-    expect(panel).toHaveTextContent(/documents, verification, alerts, exceptions, release \/ refund, reports and administration are not built yet/i);
+    expect(panel).toHaveTextContent(/every section is reached from the sidebar/i);
+    expect(panel).toHaveTextContent(/documents, verification, alerts, exceptions, release \/ refund, reports and \(for administrators\) administration/i);
+    expect(panel).not.toHaveTextContent(/not built yet/i);
     // The old wording claimed institution and FDR screens did not exist.
     expect(panel).not.toHaveTextContent(/fdr, institution and administration screens are not built/i);
   });
@@ -296,7 +382,8 @@ describe("role and institution context", () => {
     await openDashboard();
     const main = screen.getByRole("main");
     const hrefs = within(main).getAllByRole("link").map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/change-password"]);
+    expect(hrefs).toContain("/change-password");
+    expect(hrefs.every((h) => h === "/change-password" || /^\/(fdrs|alerts|exceptions)/.test(h ?? ""))).toBe(true);
   });
 });
 
@@ -312,7 +399,7 @@ describe("expired session", () => {
 describe("no fabricated data", () => {
   it("renders no amounts, no FDR numbers and no counts when nothing could be loaded", async () => {
     await openDashboard({
-      routes: { "GET /fdrs": textReply(500), "GET /institutions": textReply(500), "GET /health": textReply(500), "GET /health/ready": textReply(503) },
+      routes: { "GET /fdrs": textReply(500), "GET /institutions": textReply(500), "GET /health": textReply(500), "GET /health/ready": textReply(503), "GET /reports/summary": textReply(500), "GET /alerts": textReply(500), "GET /activity": textReply(500) },
     });
     for (const key of ["total", "submitted", "accepted"]) await within(card(key)).findByRole("alert");
     const text = document.body.textContent ?? "";

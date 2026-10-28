@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>FDR &amp; Security Deposit Portal</title>
+    <script>
+      // Apply the saved theme before the first paint so a dark-mode user never sees a light flash.
+      // Keep in step with src/lib/theme.ts (same storage key and values). No data is read except this one preference.
+      (function () {
+        try {
+          var saved = localStorage.getItem("fdr-theme");
+          var dark = saved === "dark" || ((saved === null || saved === "system") && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
